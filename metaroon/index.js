@@ -337,6 +337,14 @@ metaroon.prototype._identifyZone = function(zones) {
 	if (this.selectedZoneId) {
 		target = zones.find(function(z) { return z.zone_id === this.selectedZoneId; }.bind(this));
 		if (target) { this.logger.info('metaroon: Zone matched by saved selection: ' + target.display_name); }
+		else {
+			// The saved zone may not be registered with Roon yet (at boot the
+			// local RoonBridge comes up after the core reports other zones).
+			// Wait for it instead of falling back to another room.
+			if (!this.waitingForZone) this.logger.info('metaroon: Waiting for saved zone ' + this.selectedZoneId);
+			this.waitingForZone = true;
+			return;
+		}
 	}
 
 	if (!target) {
