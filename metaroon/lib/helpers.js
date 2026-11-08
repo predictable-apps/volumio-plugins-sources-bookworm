@@ -103,17 +103,39 @@ function findBestPlayAction(items) {
 	return playAction || (actionItems.length > 0 ? actionItems[0] : null);
 }
 
+// Every playback substream on the device, so a USB DAC that ALSA numbers
+// past card2 (e.g. card5) is found too.
+function listPlaybackHwParams() {
+	var paths = [];
+	try {
+		fs.readdirSync('/proc/asound').filter(function(card) {
+			return /^card\d+$/.test(card);
+		}).forEach(function(card) {
+			fs.readdirSync('/proc/asound/' + card).filter(function(pcm) {
+				return /^pcm\d+p$/.test(pcm);
+			}).forEach(function(pcm) {
+				fs.readdirSync('/proc/asound/' + card + '/' + pcm).filter(function(sub) {
+					return /^sub\d+$/.test(sub);
+				}).forEach(function(sub) {
+					paths.push('/proc/asound/' + card + '/' + pcm + '/' + sub + '/hw_params');
+				});
+			});
+		});
+	} catch (e) { /* no /proc/asound */ }
+	return paths;
+}
+
 function readAlsaHwParams(currentTrackTitle) {
-	if (cachedHwParams && cachedHwParamsTrack === currentTrackTitle) {
-		return cachedHwParams;
-	}
+	// No per-title cache: Roon reopens the DAC at the new track's rate a moment
+	// after the title changes, so the first read of a track is often the old
+	// rate. Reading /proc is cheap; index.js re-reads while a track plays.
 
 	var hwParamsPaths = [
 		'/proc/asound/card2/pcm0p/sub0/hw_params',
 		'/proc/asound/sndrpihifiberry/pcm0p/sub0/hw_params',
 		'/proc/asound/card1/pcm0p/sub0/hw_params',
 		'/proc/asound/card0/pcm0p/sub0/hw_params'
-	];
+	].concat(listPlaybackHwParams());
 
 	for (var p = 0; p < hwParamsPaths.length; p++) {
 		try {
@@ -144,7 +166,9 @@ function parseHwParams(data) {
 		if (key === 'format') {
 			if (value.includes('S16') || value.includes('U16')) result.bitdepth = '16 bit';
 			else if (value.includes('S24') || value.includes('U24')) result.bitdepth = '24 bit';
-			else if (value.includes('S32') || value.includes('U32')) result.bitdepth = '32 bit';
+			// A 32-bit format is the container RAAT and USB DACs use for 16 and
+			// 24-bit sources alike, so it says nothing about the music: leave it out.
+			else if (value.includes('S32') || value.includes('U32')) result.bitdepth = '';
 			else if (value.includes('DSD')) result.bitdepth = 'DSD';
 			else if (value.includes('FLOAT')) result.bitdepth = '32 bit float';
 			else result.bitdepth = value;

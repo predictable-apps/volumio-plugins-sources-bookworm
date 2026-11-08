@@ -581,9 +581,18 @@ metaroon.prototype.pushState = function() {
 metaroon.prototype._startSeekTimer = function() {
 	var self = this;
 	this._stopSeekTimer();
+	var ticks = 0;
 	this.seekTimer = setInterval(function() {
 		if (self.isActive && self.state.status === 'play') {
 			self.state.seek += 1000;
+			// Roon switches the DAC's rate a moment after a new track starts:
+			// re-read it every few seconds and update the UI when it changes.
+			if (++ticks % 3 === 0) {
+				var hwInfo = helpers.readAlsaHwParams(self.state.title);
+				if (hwInfo && (hwInfo.samplerate !== self.state.samplerate || hwInfo.bitdepth !== self.state.bitdepth)) {
+					self.pushState();
+				}
+			}
 		}
 	}, 1000);
 };
